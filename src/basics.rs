@@ -74,6 +74,7 @@ pub fn introduce() {
 
     {
         let string_two = String::from("i live shorter");
+        // deref coercion &String -> &str
         result = lifetime_example(&string_one, string_two.as_str());
     }
     
@@ -108,7 +109,6 @@ fn consume(crab: Crab) {
 
 fn borrow(crab: &Crab) {
     println!("Just borrowing: {:?}\n", crab);
-
 }
 
 fn try_to_ride_wheel(crab: &Crab) -> Result<&str, String> {

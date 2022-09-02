@@ -1,6 +1,6 @@
 mod basics;
 use std::net::SocketAddr;
-use axum::{Router, Extension, http::StatusCode, Json, routing::get};
+use axum::{Router, Extension, http::StatusCode, Json, routing::get, extract::State};
 use basics::introduce;
 use bb8::Pool;
 use bb8_postgres::PostgresConnectionManager;
@@ -55,10 +55,11 @@ async fn main() {
         .await
         .expect("Database initialization failed");
 
-    // create the routes and inject our connection pool to the requests
-    let app = Router::new()
-        .route("/crabs", get(get_crabs).post(add_crab))
-        .layer(Extension(pool));
+    let state = pool;
+
+    // create the routes and inject our connection pool as our state to the requests
+    let app = Router::with_state(state)
+        .route("/crabs", get(get_crabs).post(add_crab));
 
     // start the server
     let addr = SocketAddr::from(([127,0,0,1], 3000));
@@ -89,9 +90,17 @@ async fn init_db(pool: &ConnectionPool) -> Result<(), (StatusCode, String)> {
 /*
     select all crabs from the db
     map them to a vec of crab objects using our to_row function
+
+    axum handlers take a variable amount of extractors (only the last one can consume the body)
+    State extractor extracts the state we added earlier ::with_state(pool)
+
+    TUPLE STRUCTS:
+    similar to struct, no named fields. e.g. here struct Extension(T)
+    Struct(value): Struct<Type> destructures the struct directly in the function signature
+    gives us direct access to values inside extension without the need to access the surrounding struct first
  */
 async fn get_crabs(
-    Extension(pool): Extension<ConnectionPool>
+    State(pool): State<ConnectionPool>
 ) -> Result<(StatusCode, Json<Vec<Crab>>), (StatusCode, String)> {
     let conn = pool
         .get()
@@ -110,11 +119,11 @@ async fn get_crabs(
 }
 
 /*
-    uses json extractor to deserialize the payload to a CrabToBe (note the derive(Deserialize))
+    uses json extractor to deserialize the request body to a CrabToBe (note the derive(Deserialize))
     inserts payload values into the db
 */
 async fn add_crab(
-    Extension(pool): Extension<ConnectionPool>,
+    State(pool): State<ConnectionPool>,
     Json(payload): Json<CrabToBe>
 ) -> Result<StatusCode, (StatusCode, String)> {
     let conn = pool
