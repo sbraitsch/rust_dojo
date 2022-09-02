@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS crabs(
+    id SERIAL PRIMARY KEY NOT NULL,
+    name VARCHAR(255),
+    age SMALLINT,
+    height REAL
+);

@@ -1,116 +1,131 @@
-use std::num::ParseIntError;
+mod basics;
+use std::net::SocketAddr;
+use axum::{Router, Extension, http::StatusCode, Json, routing::get};
+use basics::introduce;
+use bb8::Pool;
+use bb8_postgres::PostgresConnectionManager;
+use serde::{Deserialize, Serialize};
+use tokio_postgres::{NoTls, Row};
 
-fn main() {
+type ConnectionPool = Pool<PostgresConnectionManager<NoTls>>;
 
-    // 8 types in total. 8, 16, 32 and 64 bit. signed and unsigned
-    let a_number: i8 = 127;
-    let bigger_number: u8 = 255;
-    println!("My numbers are: {} and {}\n", a_number, bigger_number);
+static DB_INIT_SCRIPT: &'static str = include_str!("../db.sql");
 
-
-    // a managed String (vec of chars) on the heap. can be modified
-    let string_object: String = String::from("My String");
-    // an immutable string. hardcoded into the binary
-    let string_literal: &'static str = "My &str";
-    // an immutable string slice, looking into our String on the heap
-    // does not take up additional memory
-    let string_slice: &str = &string_object[0..2];
-    println!("My strings are: {}, {} and {}\n", string_object, string_literal, string_slice);
-
-
-    // vector -> collection of elements
-    // vec! macro allows for inserting values on instantiation
-    let a_vec: Vec<&str> = vec!["have", "you", "fed", "ferris", "yet?"];
-    // if you want to create an empty vec and fill it, you need it to be mutable
-    let mut other_vec: Vec<i32> = Vec::new();
-    other_vec.push(32);
-    // structs that derive the Debug trait can be printed using :? in the template
-    println!("My vec contains: {:?}\n", a_vec);
-
-
-    // you can apply anonymous functions (closures) to all elements of a vector
-    // very similar to lambdas, but they also capture surrounding variables
-    let mapped_vec: Vec<String> = a_vec.iter().map(|element| element.to_uppercase()).collect();
-    println!("My loud vec contains: {:?}\n", mapped_vec);
-
-
-    // result is an enum with two variants. ok and err.
-    let ok_result: Result<i32, ParseIntError> = "32".parse();
-    let err_result: Result<i32, ParseIntError> = "NAN".parse();
-
-    // you can .unwrap results to use the contained value
-    ok_result.unwrap();
-    // unwrapping an err will cause a panic (program will crash)
-    // we can safely handle results (and options) using match
-    match err_result {
-        Ok(value) => println!("My Ok Result contained: {}", value),
-        Err(error) => println!("I got this Error in my Result: {:?}", error)
-    }
-    
-    // ferris is owned by the main function
-    let ferris = Crab {
-        name : "Ferris".to_string(),
-        age: 80,
-        height: 0.12,
-    };
-
-    // ownership of ferris is given to the consume function
-    // consume(ferris);
-    // ferris' ownership has been moved to consume and was dropped at this point
-    // the compiler won't let us use ferris from this point
-    borrow(&ferris);
-
-    match try_to_ride_coaster(&ferris) {
-        Ok(value) => println!("{}\n", value),
-        Err(error) => println!("{:?}\n", error)
-    }
+fn internal_error<E>(error: E) -> (StatusCode, String)
+where
+    E: std::error::Error,
+ {
+    (StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
 }
 
-// similar to implementing an interface with a default implementation
-#[derive(Debug)]
-struct Crab {
+#[derive(Deserialize)]
+struct CrabToBe {
     name: String,
-    age: u8,
+    age: i16,
+    height: f32
+}
+
+#[derive(Serialize)]
+struct Crab {
+    id: i32,
+    name: String,
+    age: i16,
     height: f32
 }
 
 impl Crab {
-    fn is_tall_enough(&self) -> bool {
-        self.height >= 0.15
-    }
-    fn is_old_enough(&self) -> bool {
-        self.age > 18
-    }
-    fn end_it(self) {
-        // crab will die.
+    fn from_row(row: Row) -> Crab {
+        Crab {
+            id: row.get("id"),
+            name: row.get("name"),
+            age: row.get("age"),
+            height: row.get("height")
+        }
     }
 }
 
-fn consume(crab: Crab) {
-    println!("Oh shit, I ate: {:?}\n", crab);
-    // the consume function goes out of scope and drops the crab
+#[tokio::main]
+async fn main() {
+    // db connection
+    let manager = PostgresConnectionManager::new_from_stringlike("host=localhost port=5432 user=postgres password=admin", NoTls).unwrap();
+    let pool = Pool::builder().build(manager).await.unwrap();
+
+    // initialize db
+    init_db(&pool)
+        .await
+        .expect("Database initialization failed");
+
+    // create the routes and inject our connection pool to the requests
+    let app = Router::new()
+        .route("/crabs", get(get_crabs).post(add_crab))
+        .layer(Extension(pool));
+
+    // start the server
+    let addr = SocketAddr::from(([127,0,0,1], 3000));
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .await
+        .unwrap()
 }
 
-fn borrow(crab: &Crab) {
-    println!("Just borrowing: {:?}\n", crab);
-
-}
-
-fn try_to_ride_coaster(crab: &Crab) -> Result<&str, String> {
+/*
+    try to run the init script
+    causes a panic in the expect when propagating an Err
+*/
+async fn init_db(pool: &ConnectionPool) -> Result<(), (StatusCode, String)> {
+    let conn = pool
+        .get()
+        .await
+        .map_err(internal_error)?;
     
-    /*
-    
-    if crab.is_tall_enough() && crab.is_old_enough() {
-        Ok("Weeeeeee")
-    } else {
-        Err(format!("{} is crying because he's too small to ride the rollercoaster.", crab.name))
-    }
+    conn
+        .batch_execute(DB_INIT_SCRIPT)
+        .await
+        .map_err(internal_error)?;
 
-    */
-    
-    match crab.is_tall_enough() && crab.is_old_enough() {
-        true => Ok("Weeeeeee"),
-        false => Err(format!("{} is crying because he's too small to ride the rollercoaster.", crab.name))
-    }
+    Ok(())
 }
 
+/*
+    select all crabs from the db
+    map them to a vec of crab objects using our to_row function
+ */
+async fn get_crabs(
+    Extension(pool): Extension<ConnectionPool>
+) -> Result<(StatusCode, Json<Vec<Crab>>), (StatusCode, String)> {
+    let conn = pool
+        .get()
+        .await
+        .map_err(internal_error)?;
+
+    let result = conn
+        .query("SELECT * FROM crabs", &[])
+        .await
+        .map_err(internal_error)?;
+
+    let crabs = result.into_iter().map(
+        |row| Crab::from_row(row)).collect();
+
+    Ok((StatusCode::OK, Json(crabs)))
+}
+
+/*
+    uses json extractor to deserialize the payload to a CrabToBe (note the derive(Deserialize))
+    inserts payload values into the db
+*/
+async fn add_crab(
+    Extension(pool): Extension<ConnectionPool>,
+    Json(payload): Json<CrabToBe>
+) -> Result<StatusCode, (StatusCode, String)> {
+    let conn = pool
+        .get()
+        .await
+        .map_err(internal_error)?;
+    
+    conn
+        .execute("INSERT INTO crabs (name, age, height) VALUES ($1, $2, $3)", &[&payload.name, &payload.age, &payload.height])
+        .await
+        .map_err(internal_error)?;
+
+    Ok(StatusCode::CREATED)
+}

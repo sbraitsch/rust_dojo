@@ -3,6 +3,10 @@ name = "rust_dojo"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
+axum = "0.5.15"
+tokio = { version = "1.20.1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+tokio-postgres = "0.7.2"
+bb8 = "0.7.1"
+bb8-postgres = "0.7.0"
