@@ -1,7 +1,7 @@
-### install the rust toolchain
+### Rustup
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-### install postgresql
+### Postgresql
 sudo apt update
 sudo apt install postgresql postgresql-contrib
 service should be running (systemctl status postgresql)
@@ -15,4 +15,4 @@ install pgadmin too if you want ¯\_(ツ)_/¯
 vs code + the official rust-analyzer extension
 or 
 intellij + the rust plugin
-choice is up to preference
+your choice.

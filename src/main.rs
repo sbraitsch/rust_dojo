@@ -1,6 +1,7 @@
 mod basics;
+
 use std::net::SocketAddr;
-use axum::{Router, Extension, http::StatusCode, Json, routing::get, extract::State};
+use axum::{Router, http::StatusCode, Json, routing::get, extract::State};
 use basics::introduce;
 use bb8::Pool;
 use bb8_postgres::PostgresConnectionManager;
@@ -14,7 +15,7 @@ static DB_INIT_SCRIPT: &'static str = include_str!("../db.sql");
 fn internal_error<E>(error: E) -> (StatusCode, String)
 where
     E: std::error::Error,
- {
+{
     (StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
 }
 

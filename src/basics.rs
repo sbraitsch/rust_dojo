@@ -12,8 +12,8 @@ pub fn introduce() {
     let string_object: String = String::from("My String");
     // an immutable string. hardcoded into the binary
     let string_literal: &'static str = "My &str";
-    // an immutable string slice, looking into our String on the heap
-    // does not take up additional memory
+    // an immutable fixed size string slice, looking into our String on the heap
+    // no need to copy part of our string
     let string_slice: &str = &string_object[0..2];
     println!("My strings are: {}, {} and {}\n", string_object, string_literal, string_slice);
 
@@ -46,6 +46,9 @@ pub fn introduce() {
         Ok(value) => println!("My Ok Result contained: {}", value),
         Err(error) => println!("I got this Error in my Result: {:?}", error)
     }
+
+    // the option type can be used in cases where you don't have an error value
+    // Option<T> -> Some(T) or None()
     
     // ferris is owned by the main function
     let ferris = Crab {
@@ -69,7 +72,10 @@ pub fn introduce() {
     }
 
     // ______________________OPTIONAL_______________________
-/*     let string_one = String::from("i live longer");
+    
+    // sometimes lifetimes cant be elided and have to be explicitly told to the borrow checker
+    /*     
+    let string_one = String::from("i live longer");
     let result;
 
     {
@@ -78,7 +84,8 @@ pub fn introduce() {
         result = lifetime_example(&string_one, string_two.as_str());
     }
     
-    println!("{}", result); */
+    println!("{}", result); 
+    */
     
 }
 
@@ -129,6 +136,9 @@ fn try_to_ride_wheel(crab: &Crab) -> Result<&str, String> {
     }
 }
 
+// the returned str is valid as long as both s1 and s2 are
+// if the returned str is used after that point, the borrow checker will scream at you
+// even if the returned value COULD be still alive at that point
 fn lifetime_example<'a>(s1: &'a str, s2: &'a str) -> &'a str {
     if s1.len() > s2.len() {
         s1
